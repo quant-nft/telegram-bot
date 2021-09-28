@@ -2,7 +2,9 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	mqi "github.com/quant-nft/mq-interface"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/xyths/hs"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -80,26 +82,26 @@ func (n *Node) Serve(ctx context.Context) error {
 		return err
 	}
 	defer ch.Close()
-	q, err := ch.QueueDeclare(
-		"hello", // name
-		false,   // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
+	_, err = ch.QueueDeclare(
+		n.cfg.MQ.Name, // name
+		false,         // durable
+		false,         // delete when unused
+		false,         // exclusive
+		false,         // no-wait
+		nil,           // arguments
 	)
 	if err != nil {
 		n.Sugar.Errorf("Declare queue error: %s", err)
 		return err
 	}
 	commands, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
+		n.cfg.MQ.Name, // queue
+		"",            // consumer
+		true,          // auto-ack
+		false,         // exclusive
+		false,         // no-local
+		false,         // no-wait
+		nil,           // args
 	)
 	if err != nil {
 		n.Sugar.Errorf("Consume message error: %s", err)
@@ -116,5 +118,22 @@ func (n *Node) Serve(ctx context.Context) error {
 }
 
 func (n *Node) doCommand(ctx context.Context, msg amqp.Delivery) {
-	n.Sugar.Infof("received command: %s", msg.Body)
+	var command mqi.TelegramMessage
+	if err := json.Unmarshal(msg.Body, &command); err != nil {
+		n.Sugar.Errorf("Json unmarshal error: %s", err)
+		return
+	}
+
+	tgMsg := tgbotapi.NewMessage(command.ChatId, command.Content)
+	if command.ParseMode != nil {
+		tgMsg.ParseMode = *command.ParseMode
+	}
+	if command.DisablePreview != nil {
+		tgMsg.DisableWebPagePreview = *command.DisablePreview
+	}
+
+	if _, err := n.tg.Send(tgMsg); err != nil {
+		n.Sugar.Errorf("Send Telegram message error: %s", err)
+		return
+	}
 }

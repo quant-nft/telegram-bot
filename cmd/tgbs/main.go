@@ -16,7 +16,7 @@ func init() {
 	app = &cli.App{
 		Name:    filepath.Base(os.Args[0]),
 		Usage:   "Telegram Bot Server",
-		Version: "0.1.0",
+		Version: "0.1.2",
 	}
 
 	app.Commands = []*cli.Command{
